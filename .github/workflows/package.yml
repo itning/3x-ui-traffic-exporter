@@ -4,34 +4,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_and_release:
+  create_release:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        os: [linux, windows, darwin]
-        arch: [amd64, arm64]
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24.1'
-
-      - name: Build Binary
-        run: |
-          export GOOS=${{ matrix.os }}
-          export GOARCH=${{ matrix.arch }}
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            export OUTPUT_FILE="3x-ui-traffic-exporter-${GOOS}-${GOARCH}.exe"
-          else
-            export OUTPUT_FILE="3x-ui-traffic-exporter-${GOOS}-${GOARCH}"
-          fi
-          echo "Building for ${GOOS}/${GOARCH}..."
-          go build -o $OUTPUT_FILE main.go
-
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -43,12 +18,29 @@ jobs:
           draft: true
           prerelease: false
 
+      - name: Output Upload URL
+        run: echo "UPLOAD_URL=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_ENV
+
+  upload_assets:
+    needs: create_release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, windows, darwin]
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       - name: Upload Release Assets
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
           asset_path: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
           asset_name: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
           asset_content_type: application/octet-stream
