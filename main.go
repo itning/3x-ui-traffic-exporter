@@ -144,6 +144,9 @@ func main() {
 		http.Handle("/", landingPage)
 	}
 
+	collector := &EmailTrafficCollector{db: db}
+	prometheus.MustRegister(collector)
+
 	server := &http.Server{}
 	if err := web.ListenAndServe(server, toolkitFlags, logger); err != nil {
 		logger.Error(err.Error())
