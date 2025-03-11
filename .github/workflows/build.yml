@@ -1,0 +1,34 @@
+name: Build Multi-Platform Binaries
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, windows, darwin]  # 支持的操作系统
+        arch: [amd64, arm64]          # 支持的架构
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24.1'  # 指定 Go 版本
+
+      - name: Build Binary
+        run: |
+          export GOOS=${{ matrix.os }}
+          export GOARCH=${{ matrix.arch }}
+          export OUTPUT_FILE="3x-ui-traffic-exporter-${GOOS}-${GOARCH}${{ matrix.os == 'windows' && '.exe' || '' }}"
+          echo "Building for ${GOOS}/${GOARCH}..."
+          go build -o $OUTPUT_FILE main.go
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: 3x-ui-traffic-exporter-${{ matrix.os }}-${{ matrix.arch }}
+          path: 3x-ui-traffic-exporter-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
