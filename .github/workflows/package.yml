@@ -35,7 +35,6 @@ jobs:
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
-        if: matrix.os == 'linux' && matrix.arch == 'amd64' # 仅在第一个组合中创建 Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
