@@ -40,43 +40,39 @@ jobs:
           path: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
 
   release:
-   needs: build
-   runs-on: ubuntu-latest
-   steps:
-    - name: Download Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, windows, darwin]
+        arch: [amd64, arm64]
 
-    - name: Debug Artifacts
-      run: ls -R artifacts
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        draft: true
-        prerelease: false
+      - name: Debug Artifacts
+        run: ls -R artifacts
 
-    - name: Upload Release Assets
-      run: |
-        # 遍历 artifacts 目录中的所有文件并上传
-        for dir in artifacts/*; do
-          if [ -d "$dir" ]; then
-            for file in "$dir"/*; do
-              if [ -f "$file" ]; then
-                echo "Uploading $file..."
-                asset_name=$(basename "$file")
-                curl -X POST \
-                  -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                  -H "Content-Type: application/octet-stream" \
-                  --data-binary @"$file" \
-                  "${{ steps.create_release.outputs.upload_url }}?name=$asset_name"
-              fi
-            done
-          fi
-        done
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: true
+          prerelease: false
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/${{ matrix.os }}-${{ matrix.arch }}/${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
+          asset_name: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
+          asset_content_type: application/octet-stream
