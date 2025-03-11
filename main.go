@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
+	"github.com/prometheus/common/version"
 	"log"
-	"log/slog"
 	"net/http"
+	"os"
+	"runtime"
 
 	"github.com/alecthomas/kingpin/v2"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/promslog"
+	"github.com/prometheus/common/promslog/flag"
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/prometheus/exporter-toolkit/web/kingpinflag"
 )
@@ -65,34 +70,83 @@ func (c *EmailTrafficCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
+func IsSQLiteFile(filePath string) (bool, error) {
+	signature := []byte("SQLite format 3\x00")
+	buf := make([]byte, len(signature))
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	_, err = file.ReadAt(buf, 0)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(buf, signature), nil
+}
+
 func main() {
-	app := kingpin.New("email-traffic-exporter", "A Prometheus exporter for email traffic metrics.")
+	var (
+		metricsPath  = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
+		maxProcs     = kingpin.Flag("runtime.gomaxprocs", "The target number of CPUs Go will run on (GOMAXPROCS)").Envar("GOMAXPROCS").Default("1").Int()
+		dbPath       = kingpin.Flag("db-path", "Path to the SQLite database").Default("/etc/x-ui/x-ui.db").String()
+		toolkitFlags = kingpinflag.AddFlags(kingpin.CommandLine, ":9100")
+	)
 
-	webFlags := kingpinflag.AddFlags(app, ":9100")
+	promslogConfig := &promslog.Config{}
+	flag.AddFlags(kingpin.CommandLine, promslogConfig)
+	kingpin.Version(version.Print("3x-ui-traffic-exporter"))
+	kingpin.CommandLine.UsageWriter(os.Stdout)
+	kingpin.HelpFlag.Short('h')
+	kingpin.Parse()
+	logger := promslog.New(promslogConfig)
 
-	dbPath := app.Flag("db-path", "Path to the SQLite database").Default("/etc/x-ui/x-ui.db").String()
+	logger.Info("Starting 3x-ui-traffic-exporter", "version", version.Info())
+	logger.Info("Build context", "build_context", version.BuildContext())
 
-	kingpin.MustParse(app.Parse(nil))
+	isSQLite, err := IsSQLiteFile(*dbPath)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Error: %v", err))
+		return
+	}
+	if !isSQLite {
+		logger.Error(fmt.Sprintf("It doesn't look like a sqlite file: %s", *dbPath))
+		return
+	}
 
 	db, err := sql.Open("sqlite3", *dbPath)
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		logger.Error(fmt.Sprintf("Failed to open database: %v", err))
 	}
 	defer db.Close()
 
-	collector := &EmailTrafficCollector{db: db}
-	prometheus.MustRegister(collector)
+	runtime.GOMAXPROCS(*maxProcs)
+	logger.Debug("Go MAXPROCS", "procs", runtime.GOMAXPROCS(0))
 
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-
-	server := &http.Server{
-		Handler: mux,
+	http.Handle(*metricsPath, promhttp.Handler())
+	if *metricsPath != "/" {
+		landingConfig := web.LandingConfig{
+			Name:        "3x-ui-traffic-exporter",
+			Description: "3x-ui-traffic-exporter",
+			Version:     version.Info(),
+			Links: []web.LandingLinks{
+				{
+					Address: *metricsPath,
+					Text:    "Metrics",
+				},
+			},
+		}
+		landingPage, err := web.NewLandingPage(landingConfig)
+		if err != nil {
+			logger.Error(err.Error())
+			os.Exit(1)
+		}
+		http.Handle("/", landingPage)
 	}
 
-	logger := slog.New(slog.NewTextHandler(log.Writer(), nil))
-
-	if err := web.ListenAndServe(server, webFlags, logger); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	server := &http.Server{}
+	if err := web.ListenAndServe(server, toolkitFlags, logger); err != nil {
+		logger.Error(err.Error())
+		os.Exit(1)
 	}
 }
