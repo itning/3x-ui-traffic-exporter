@@ -48,6 +48,8 @@ jobs:
         with:
           path: artifacts
 
+      - name: Debug Artifacts
+        run: ls -R artifacts
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
