@@ -1,10 +1,10 @@
-name: Build Multi-Platform Binaries and Upload to Release
+name: Build and Release
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build_and_release:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -24,7 +24,6 @@ jobs:
         run: |
           export GOOS=${{ matrix.os }}
           export GOARCH=${{ matrix.arch }}
-          # Determine the output file name with .exe extension for Windows
           if [ "${{ matrix.os }}" = "windows" ]; then
             export OUTPUT_FILE="3x-ui-traffic-exporter-${GOOS}-${GOARCH}.exe"
           else
@@ -33,32 +32,10 @@ jobs:
           echo "Building for ${GOOS}/${GOARCH}..."
           go build -o $OUTPUT_FILE main.go
 
-      - name: Upload Binary as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        os: [linux, windows, darwin]
-        arch: [amd64, arm64]
-
-    steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Debug Artifacts
-        run: ls -R artifacts
-
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
+        if: matrix.os == 'linux' && matrix.arch == 'amd64' # 仅在第一个组合中创建 Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -73,6 +50,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/${{ matrix.os }}-${{ matrix.arch }}/${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
+          asset_path: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
           asset_name: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
           asset_content_type: application/octet-stream
