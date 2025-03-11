@@ -21,21 +21,19 @@
 
 ---
 
-[中文](https://github.com/itning/3x-ui-traffic-exporter/blob/main/README-cn.md)
+# 介绍
 
-# Introduction
+功能：将3x-ui中的流量信息上报给Prometheus
 
-Function: Report traffic information from 3x-ui to Prometheus.
-
-Implementation effect:
+实现效果：
 
 ![](./pic/a.png)
 
-In 3x-ui:
+在3x-ui中：
 
 ![](./pic/b.png)
 
-# Usage
+# 使用
 
 ```shell
 ./3x-ui-traffic-exporter-linux-amd64 --web.listen-address=":9100" 
@@ -56,14 +54,14 @@ email_upload_bytes_total{email="jk8120as",enable="1"} 1.33524713e+08
 email_upload_bytes_total{email="rda66ai2",enable="1"} 4.6806666e+07
 ```
 
-The default location for the 3x-ui SQLite database is: `/etc/x-ui/x-ui.db`.
+默认使用3x-ui sqlite数据库位置为：`/etc/x-ui/x-ui.db`
 
-If not in the default location, it can be modified via a parameter, for example: `--db-path=/home/xui.db`.
+如果不在默认位置可以通过参数修改，例如`--db-path=/home/xui.db`
 
-Supports TLS: `--web.config.file=web-config.yml`.
+支持TLS：`--web.config.file=web-config.yml`
 
-For specific configuration details: [exporter-toolkit web-configuration](https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md).
+具体配置：[exporter-toolkit web-configuration](https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md)
 
-# Acknowledgments
+# 感谢
 
 ![JetBrains Logo (Main) logo](https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg)
