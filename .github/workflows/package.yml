@@ -34,7 +34,7 @@ jobs:
           go build -o $OUTPUT_FILE main.go
 
       - name: Upload Binary as Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-${{ matrix.arch }}
           path: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
