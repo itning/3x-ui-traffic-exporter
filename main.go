@@ -2,14 +2,17 @@ package main
 
 import (
 	"database/sql"
-	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 
+	"github.com/alecthomas/kingpin/v2"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/exporter-toolkit/web"
+	"github.com/prometheus/exporter-toolkit/web/kingpinflag"
 )
 
 type EmailTrafficCollector struct {
@@ -63,9 +66,13 @@ func (c *EmailTrafficCollector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func main() {
-	port := flag.Int("port", 9833, "Port to listen on")
-	dbPath := flag.String("dbPath", "/etc/x-ui/x-ui.db", "Path to the SQLite database")
-	flag.Parse()
+	app := kingpin.New("email-traffic-exporter", "A Prometheus exporter for email traffic metrics.")
+
+	webFlags := kingpinflag.AddFlags(app, ":9100")
+
+	dbPath := app.Flag("db-path", "Path to the SQLite database").Default("/etc/x-ui/x-ui.db").String()
+
+	kingpin.MustParse(app.Parse(nil))
 
 	db, err := sql.Open("sqlite3", *dbPath)
 	if err != nil {
@@ -74,10 +81,18 @@ func main() {
 	defer db.Close()
 
 	collector := &EmailTrafficCollector{db: db}
-
 	prometheus.MustRegister(collector)
 
-	http.Handle("/metrics", promhttp.Handler())
-	log.Printf("Starting server on port %d", *port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	server := &http.Server{
+		Handler: mux,
+	}
+
+	logger := slog.New(slog.NewTextHandler(log.Writer(), nil))
+
+	if err := web.ListenAndServe(server, webFlags, logger); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }
