@@ -37,7 +37,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ github.event.release.upload_url }} # Release 的上传 URL
-          asset_path: ${{ github.workspace }}/${{ matrix.os == 'windows' && '3x-ui-traffic-exporter-' ~ matrix.os ~ '-' ~ matrix.arch ~ '.exe' || '3x-ui-traffic-exporter-' ~ matrix.os ~ '-' ~ matrix.arch }}
-          asset_name: 3x-ui-traffic-exporter-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ github.workspace }}/${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
+          asset_name: ${{ matrix.os == 'windows' && format('3x-ui-traffic-exporter-{0}-{1}.exe', matrix.os, matrix.arch) || format('3x-ui-traffic-exporter-{0}-{1}', matrix.os, matrix.arch) }}
           asset_content_type: application/octet-stream
