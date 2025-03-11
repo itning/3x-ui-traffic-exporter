@@ -11,13 +11,13 @@ import (
 	"runtime"
 
 	"github.com/alecthomas/kingpin/v2"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/promslog/flag"
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/prometheus/exporter-toolkit/web/kingpinflag"
+	_ "modernc.org/sqlite"
 )
 
 type EmailTrafficCollector struct {
@@ -114,7 +114,7 @@ func main() {
 		return
 	}
 
-	db, err := sql.Open("sqlite3", *dbPath)
+	db, err := sql.Open("sqlite", *dbPath)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to open database: %v", err))
 	}
@@ -122,6 +122,9 @@ func main() {
 
 	runtime.GOMAXPROCS(*maxProcs)
 	logger.Debug("Go MAXPROCS", "procs", runtime.GOMAXPROCS(0))
+
+	collector := &EmailTrafficCollector{db: db}
+	prometheus.MustRegister(collector)
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	if *metricsPath != "/" {
@@ -143,9 +146,6 @@ func main() {
 		}
 		http.Handle("/", landingPage)
 	}
-
-	collector := &EmailTrafficCollector{db: db}
-	prometheus.MustRegister(collector)
 
 	server := &http.Server{}
 	if err := web.ListenAndServe(server, toolkitFlags, logger); err != nil {
