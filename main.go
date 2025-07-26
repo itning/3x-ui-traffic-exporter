@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"database/sql"
-	"fmt"
-	"github.com/prometheus/common/version"
 	"log"
 	"net/http"
 	"os"
@@ -15,9 +13,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/promslog/flag"
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/prometheus/exporter-toolkit/web/kingpinflag"
 	_ "modernc.org/sqlite"
+)
+
+const (
+	namespace = "email"
+	subsystem = "traffic"
+)
+
+var (
+	upBytesDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, subsystem, "upload_bytes_total"),
+		"Total bytes uploaded by each email.",
+		[]string{"email", "enable"}, nil,
+	)
+
+	downBytesDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, subsystem, "download_bytes_total"),
+		"Total bytes downloaded by each email.",
+		[]string{"email", "enable"}, nil,
+	)
 )
 
 type EmailTrafficCollector struct {
@@ -25,8 +43,8 @@ type EmailTrafficCollector struct {
 }
 
 func (c *EmailTrafficCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- prometheus.NewDesc("email_upload_bytes_total", "Total bytes uploaded by each email.", []string{"email", "enable"}, nil)
-	ch <- prometheus.NewDesc("email_download_bytes_total", "Total bytes downloaded by each email.", []string{"email", "enable"}, nil)
+	ch <- upBytesDesc
+	ch <- downBytesDesc
 }
 
 func (c *EmailTrafficCollector) Collect(ch chan<- prometheus.Metric) {
@@ -40,29 +58,20 @@ func (c *EmailTrafficCollector) Collect(ch chan<- prometheus.Metric) {
 	for rows.Next() {
 		var email string
 		var up, down int64
-		var enable int
+		var enable bool
+
 		if err := rows.Scan(&email, &up, &down, &enable); err != nil {
 			log.Printf("Error scanning row: %v", err)
 			continue
 		}
 
-		enableLabel := fmt.Sprintf("%d", enable)
+		enableStr := "false"
+		if enable {
+			enableStr = "true"
+		}
 
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("email_upload_bytes_total", "Total bytes uploaded by each email.", []string{"email", "enable"}, nil),
-			prometheus.CounterValue,
-			float64(up),
-			email,
-			enableLabel,
-		)
-
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("email_download_bytes_total", "Total bytes downloaded by each email.", []string{"email", "enable"}, nil),
-			prometheus.CounterValue,
-			float64(down),
-			email,
-			enableLabel,
-		)
+		ch <- prometheus.MustNewConstMetric(upBytesDesc, prometheus.CounterValue, float64(up), email, enableStr)
+		ch <- prometheus.MustNewConstMetric(downBytesDesc, prometheus.CounterValue, float64(down), email, enableStr)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -106,17 +115,18 @@ func main() {
 
 	isSQLite, err := IsSQLiteFile(*dbPath)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Error: %v", err))
+		logger.Error("Failed to check SQLite file", "error", err)
 		return
 	}
 	if !isSQLite {
-		logger.Error(fmt.Sprintf("It doesn't look like a sqlite file: %s", *dbPath))
+		logger.Error("Not a valid SQLite file", "path", *dbPath)
 		return
 	}
 
 	db, err := sql.Open("sqlite", *dbPath)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to open database: %v", err))
+		logger.Error("Failed to open database", "error", err)
+		return
 	}
 	defer db.Close()
 
@@ -129,8 +139,8 @@ func main() {
 	http.Handle(*metricsPath, promhttp.Handler())
 	if *metricsPath != "/" {
 		landingConfig := web.LandingConfig{
-			Name:        "3x-ui-traffic-exporter",
-			Description: "3x-ui-traffic-exporter",
+			Name:        "3x-ui Traffic Exporter",
+			Description: "Exports email traffic statistics from 3x-ui SQLite DB",
 			Version:     version.Info(),
 			Links: []web.LandingLinks{
 				{
@@ -141,7 +151,7 @@ func main() {
 		}
 		landingPage, err := web.NewLandingPage(landingConfig)
 		if err != nil {
-			logger.Error(err.Error())
+			logger.Error("Failed to create landing page", "error", err)
 			os.Exit(1)
 		}
 		http.Handle("/", landingPage)
@@ -149,7 +159,7 @@ func main() {
 
 	server := &http.Server{}
 	if err := web.ListenAndServe(server, toolkitFlags, logger); err != nil {
-		logger.Error(err.Error())
+		logger.Error("Server failed to start", "error", err)
 		os.Exit(1)
 	}
 }
