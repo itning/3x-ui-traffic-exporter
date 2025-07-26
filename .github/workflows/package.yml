@@ -2,6 +2,11 @@ name: Build Multi-Platform Binaries and Upload to Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
 
 jobs:
   create-release:
@@ -15,8 +20,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ github.event.inputs.version }}
+          release_name: Release ${{ github.event.inputs.version }}
           draft: true
           prerelease: false
 
@@ -31,11 +36,20 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取所有 git 历史用于版本信息
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.24.1'
+
+      - name: Get Git Info
+        id: git
+        run: |
+          echo "revision=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
       - name: Build Binary
         id: build
@@ -45,7 +59,15 @@ jobs:
           # Determine the output file name with .exe extension for Windows
           OUTPUT_FILE="3x-ui-traffic-exporter-${GOOS}-${GOARCH}${{ matrix.os == 'windows' && '.exe' || '' }}"
           echo "Building for ${GOOS}/${GOARCH}..."
-          go build -o $OUTPUT_FILE main.go
+          
+          # 设置版本信息 ldflags
+          LDFLAGS="-X 'github.com/prometheus/common/version.Version=${{ github.event.inputs.version }}' \
+                   -X 'github.com/prometheus/common/version.Revision=${{ steps.git.outputs.revision }}' \
+                   -X 'github.com/prometheus/common/version.Branch=${{ steps.git.outputs.branch }}' \
+                   -X 'github.com/prometheus/common/version.BuildUser=github-actions' \
+                   -X 'github.com/prometheus/common/version.BuildDate=${{ steps.git.outputs.build_date }}'"
+          
+          go build -ldflags "$LDFLAGS" -o $OUTPUT_FILE main.go
           echo "output_file=$OUTPUT_FILE" >> $GITHUB_ENV
 
       - name: Upload Release Asset
