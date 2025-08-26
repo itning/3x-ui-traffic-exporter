@@ -1,6 +1,6 @@
 module 3x-ui-traffic-exporter
 
-go 1.24.1
+go 1.25.0
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
